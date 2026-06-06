@@ -13,7 +13,8 @@ def seed_snomed_filters(tsv_path: str):
     skip_all_subsequent_repeats = False
 
     try:
-        df = pd.read_csv(tsv_path, sep='\t')
+        # Added .fillna('') to prevent missing values from becoming 'nan' strings
+        df = pd.read_csv(tsv_path, sep='\t').fillna('')
 
         for index, row in df.iterrows():
             record_id = int(row['SNOMED code'])
@@ -37,7 +38,7 @@ def seed_snomed_filters(tsv_path: str):
 
             # 2. Attempt insertion to catch other unique constraint failures
             new_filter = models.SnomedFilter(
-                id=record_id,  # Explicitly setting your unique TSV IDs
+                id=record_id,
                 snomed_descriptor=str(row['SNOMED descriptor']),
                 icdo_code=str(row['ICD-O code']),
                 topography=str(row['topography']),
@@ -45,11 +46,13 @@ def seed_snomed_filters(tsv_path: str):
             )
 
             try:
-                db.add(new_filter)
-                db.flush()  # Flush sends SQL to DB to trigger constraints without committing yet
+                # Use begin_nested() to create a savepoint
+                with db.begin_nested():
+                    db.add(new_filter)
+                    db.flush()
 
             except IntegrityError as ie:
-                db.rollback()  # Rollback the failed flush to keep the session clean
+                # The context manager automatically rolls back to the savepoint
 
                 if skip_all_subsequent_repeats:
                     continue
@@ -77,4 +80,4 @@ def seed_snomed_filters(tsv_path: str):
 
 
 if __name__ == "__main__":
-    seed_snomed_filters("snomed.tsv")
+    seed_snomed_filters("seed.tsv")
